@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Campus Navigator</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    #map {
+      height: 100vh;
+    }
+
+    .panel {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      width: 280px;
+      background: white;
+      padding: 16px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      z-index: 1000;
+    }
+
+    h2 {
+      margin: 0 0 10px 0;
+      font-size: 18px;
+    }
+
+    label {
+      font-size: 13px;
+      color: #444;
+    }
+
+    select, button {
+      width: 100%;
+      margin-top: 6px;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+    }
+
+    button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: 500;
+    }
+
+    button:hover {
+      background: #1e40af;
+    }
+
+    .routes {
+      margin-top: 12px;
+    }
+
+    .route {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 10px;
+      margin-top: 8px;
+      background: #f9fafb;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .route:hover {
+      background: #eef2ff;
+      transform: scale(1.02);
+    }
+
+    .route.active {
+      border: 2px solid #2563eb;
+      background: #e0e7ff;
+    }
+
+    .distance {
+      font-size: 12px;
+      color: #555;
+    }
+  </style>
+</head>
+
+<body>
+
+<div id="map"></div>
+
+<div class="panel">
+  <h2>Campus Navigator</h2>
+
+  <label>From</label>
+  <select id="start"></select>
+
+  <label>To</label>
+  <select id="end"></select>
+
+  <button onclick="fetchRoutes()">Find Routes</button>
+  <button onclick="resetApp()">Reset</button>
+
+  <div class="routes" id="routes"></div>
+</div>
+
+<script>
+
+const API_BASE = "http://127.0.0.1:8000"; // change after deployment
+
+// Only meaningful locations
+const POINTS_OF_INTEREST = [
+  "EntryGate",
+  "ExitGate",
+  "BoatClub",
+  "Building1",
+  "Arena",
+  "B2_Node",
+  "Parking",
+  "FruitCanteen",
+  "Library",
+  "MainCanteen",
+  "FoodStalls"
+];
+
+const map = L.map('map').setView([18.4639, 73.8682], 18);
+
+L.tileLayer(
+  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+).addTo(map);
+
+let nodes = {};
+let activeRouteLine = null;
+
+// ---------------- LOAD NODE DATA ----------------
+fetch(API_BASE + "/nodes")
+  .then(res => res.json())
+  .then(data => {
+
+    nodes = data;
+
+    const startSelect = document.getElementById("start");
+    const endSelect = document.getElementById("end");
+
+    POINTS_OF_INTEREST.forEach(name => {
+      if (nodes[name]) {
+        startSelect.add(new Option(name, name));
+        endSelect.add(new Option(name, name));
+      }
+    });
+  });
+
+// ---------------- FETCH ROUTES ----------------
+async function fetchRoutes() {
+
+  const start = document.getElementById("start").value;
+  const end = document.getElementById("end").value;
+
+  if (!start || !end) {
+    alert("Please select both start and destination.");
+    return;
+  }
+
+  clearRoute();
+
+  const response = await fetch(`${API_BASE}/routes?start=${start}&end=${end}`);
+  const routes = await response.json();
+
+  renderRouteOptions(routes);
+}
+
+// ---------------- DISPLAY ROUTES ----------------
+function renderRouteOptions(routes) {
+
+  const container = document.getElementById("routes");
+  container.innerHTML = "";
+
+  routes.forEach((route, index) => {
+
+    const card = document.createElement("div");
+    card.className = "route";
+
+    card.innerHTML = `
+      <strong>Route ${index + 1}</strong>
+      <div class="distance">${route.distance} meters</div>
+    `;
+
+    card.onclick = () => {
+      setActiveRoute(card);
+      simulateRoute(route);
+    };
+
+    container.appendChild(card);
+  });
+}
+
+// ---------------- SIMULATION ----------------
+async function simulateRoute(route) {
+
+  clearRoute();
+
+  const pathCoords = [];
+
+  activeRouteLine = L.polyline([], {
+    color: "#ef4444",
+    weight: 6
+  }).addTo(map);
+
+  for (let i = 0; i < route.coordinates.length; i++) {
+
+    pathCoords.push(route.coordinates[i]);
+    activeRouteLine.setLatLngs(pathCoords);
+
+    await delay(250);
+  }
+
+  map.fitBounds(activeRouteLine.getBounds());
+}
+
+// ---------------- HELPERS ----------------
+function clearRoute() {
+  if (activeRouteLine) {
+    map.removeLayer(activeRouteLine);
+    activeRouteLine = null;
+  }
+}
+
+function setActiveRoute(selectedCard) {
+  document.querySelectorAll(".route").forEach(el => {
+    el.classList.remove("active");
+  });
+  selectedCard.classList.add("active");
+}
+
+function resetApp() {
+  location.reload();
+}
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+</script>
+
+</body>
+</html>
